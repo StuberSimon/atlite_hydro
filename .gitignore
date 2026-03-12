@@ -27,3 +27,7 @@ paper
 # Ignore IDE project files
 .idea/
 .vscode
+
+test/
+.zip
+data/
