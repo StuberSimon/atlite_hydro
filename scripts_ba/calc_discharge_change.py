@@ -1,6 +1,7 @@
 import xarray as xr
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 
 ds = xr.open_dataset("data/data_version-4.0_consolidated.nc")
 
@@ -32,8 +33,12 @@ diff = cologne.iloc[1:-1] - cologne_shifted.iloc[1:-1]
 diff_avg = diff.abs().mean().values[0]
 diff_avg_rel = diff_avg / cologne.abs().mean().values[0]
 diff_max = diff.abs().max().values[0]
+diff_max_rel = diff_max / cologne.abs().mean().values[0]
 diff_min = diff.abs().min().values[0]
-print(f'Average diff = {diff_avg}')
-print(f'Average diff relative = {diff_avg_rel*100}%')
-print(f'Maximum diff = {diff_max}')
-print(f'Minimum diff = {diff_min}')
+diff_min_rel = diff_min / cologne.abs().mean().values[0]
+print(f'- Average absolute change = {np.round(diff_avg*1, 2)} m³/s')
+print(f'- Average relative change = {np.round(diff_avg_rel*100, 2)}%')
+print(f'- Maximum absolute change = {np.round(diff_max*1, 2)} m³/s')
+print(f'- Maximum relative change = {np.round(diff_max_rel*100, 2)}%')
+print(f'- Minimum absolute change = {np.round(diff_min*1, 2)} m³/s')
+print(f'- Minimum relative change = {np.round(diff_min_rel*100, 3)}%')
