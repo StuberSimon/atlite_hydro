@@ -998,7 +998,10 @@ def hydro(
     Parameters
     ----------
     plants : pd.DataFrame
-        Run-of-river plants or dams with lon, lat columns.
+        Run-of-river plants or dams with lon, lat columns. For discharge-based
+        computation, plants may carry x_snapped/y_snapped columns pre-computed
+        by `atlite.hydro.snap_plants_to_river` to snap onto GLOFAS river cells;
+        otherwise plants are snapped to the nearest cell holding data.
     module : str
         The method to compute hydro time series. "auto" will prefere discharge but fall back to runoff-based computation
         "glofas" will use discharge directly, "era5" will use runoff-based computation

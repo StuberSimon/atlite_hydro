@@ -16,6 +16,7 @@ from tempfile import mkstemp
 
 import cdsapi
 import numpy as np
+import requests
 import xarray as xr
 from dask import compute, delayed
 from dask.utils import SerializableLock
@@ -50,22 +51,25 @@ dataset = "cems-glofas-historical"
 
 features = {"discharge": ["discharge"]}
 
+# GLOFAS v4 static upstream-area map (CEMS auxiliary data, ~87 MB), on the same
+# 0.05 deg grid as the discharge product. See
+# https://confluence.ecmwf.int/display/CEMS/Auxiliary+Data
+UPAREA_V4_URL = (
+    "https://confluence.ecmwf.int/download/attachments/242067380/"
+    "uparea_glofas_v4_0.nc?version=2&modificationDate=1668604690076&api=v2"
+)
 
-def _rename_and_clean_coords(ds, add_lon_lat=True):
+
+def _clean_spatial_coords(ds, add_lon_lat=True):
     """
-    Rename 'longitude' and 'latitude' columns to 'x' and 'y' and fix roundings.
+    Rename 'longitude' and 'latitude' to 'x' and 'y', fix roundings and sort
+    both ascending.
 
     Optionally (add_lon_lat, default:True) preserves latitude and
     longitude columns as 'lat' and 'lon'.
     """
-    ds = ds.rename(
-        {
-            "longitude": "x",
-            "latitude": "y",
-            "valid_time": "time",
-            "dis24": "discharge",
-        }
-    )
+    names = {"longitude": "x", "latitude": "y"}
+    ds = ds.rename({n: t for n, t in names.items() if n in ds.dims or n in ds.coords})
     # round coords since cds coords are float64 which would lead to mismatches
     ds = ds.assign_coords(
         x=np.round(ds.x.astype(float), 5), y=np.round(ds.y.astype(float), 5)
@@ -73,6 +77,15 @@ def _rename_and_clean_coords(ds, add_lon_lat=True):
     ds = maybe_swap_spatial_dims(ds)
     if add_lon_lat:
         ds = ds.assign_coords(lon=ds.coords["x"], lat=ds.coords["y"])
+    return ds
+
+
+def _rename_and_clean_coords(ds, add_lon_lat=True):
+    """
+    Rename coordinates and variables to atlite conventions and fix roundings.
+    """
+    ds = ds.rename({"valid_time": "time", "dis24": "discharge"})
+    ds = _clean_spatial_coords(ds, add_lon_lat=add_lon_lat)
     ds = ds.drop_vars(["expver", "number"], errors="ignore")
 
     return ds
@@ -179,6 +192,51 @@ def retrieve_data(
         if tmpdir is None:
             add_finalizer(target)
     return ds
+
+
+def retrieve_uparea(path: str | Path) -> xr.DataArray:
+    """
+    Open the GLOFAS v4 static upstream-area map, downloading it if necessary.
+
+    The ~87 MB NetCDF is fetched from the CEMS auxiliary-data page (variable
+    ``uparea``, in m2) if `path` does not yet exist. It lies on the same
+    0.05 deg grid as the GLOFAS v4 discharge product, so cells co-register 1:1.
+
+    The returned DataArray has its coordinates renamed and rounded exactly like
+    a discharge cutout ('longitude'->'x', 'latitude'->'y', both sorted
+    ascending) and its values converted to km2.
+
+    Parameters
+    ----------
+    path : str | Path
+        Location of the ``uparea_glofas_v4_0.nc`` file. Downloaded to this path
+        from `UPAREA_V4_URL` if it does not exist.
+
+    Returns
+    -------
+    xarray.DataArray
+        Upstream area per cell in km2, with attrs['units'] == 'km2'.
+
+    Notes
+    -----
+    Data is licensed under the CEMS-FLOODS licence and should be attributed as
+    "Contains modified Copernicus Emergency Management Service information".
+    """
+    path = Path(path)
+    if not path.exists():
+        logger.info(f"Downloading GLOFAS uparea map to {path} (~87 MB)")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with requests.get(UPAREA_V4_URL, stream=True, timeout=60) as r:
+            r.raise_for_status()
+            with open(path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=1 << 20):
+                    f.write(chunk)
+
+    ds = xr.open_dataset(path)
+    uparea = _clean_spatial_coords(ds[["uparea"]], add_lon_lat=False)["uparea"]
+    uparea = uparea / 1e6  # m2 -> km2
+    uparea.attrs["units"] = "km2"
+    return uparea
 
 
 def retrieval_times(coords, static=False, monthly_requests=False):

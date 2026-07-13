@@ -27,6 +27,7 @@ from importlib.metadata import version
 
 from atlite.cutout import Cutout
 from atlite.gis import ExclusionContainer, compute_indicatormatrix, regrid
+from atlite.hydro import snap_plants_to_river
 from atlite.resource import cspinstallations, solarpanels, windturbines
 
 # e.g. "0.17.1" or "0.17.1.dev4+ga3890dc0" (if installed from git)
@@ -44,5 +45,6 @@ __all__ = [
     cspinstallations,
     solarpanels,
     windturbines,
+    snap_plants_to_river,
     __version__,
 ]
